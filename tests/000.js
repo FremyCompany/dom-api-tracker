@@ -19,3 +19,9 @@ a.remove();
 var o = new Option();
 o.textContent = 'option';
 o.defaultSelected = true;
+
+// test3
+var d1 = document.createElement.call(document, 'DIV');
+d1.__expando = 'div';
+var d2 = document.createElement.apply(document, ['DIV']);
+d2.__expando = 'div';

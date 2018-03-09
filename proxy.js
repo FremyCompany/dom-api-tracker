@@ -47,7 +47,7 @@ void function() {
 	};
 
 	var shouldBeWrapped = function(f) {
-		return !isAlreadyWrapped(f) && isFromThisRealm(f) && (!~objectsToNeverWrapProperties.indexOf(f)) && (typeof(f) == 'function' ? isNativeFunction(f) : (f.constructor ? f.constructor !== Object && isNativeFunction(f.constructor) : false));
+		return !isAlreadyWrapped(f) && isFromThisRealm(f) && (!~objectsToNeverWrapProperties.indexOf(f)) && (typeof(f) == 'function' ? isNativeFunction(f) : (f.constructor ? f.constructor !== Object && isNativeFunction(unbox(f.constructor)) : false));
 	}
 
 	Function.prototype.bind = function() {
@@ -655,14 +655,17 @@ void function() {
 		}
 	}
 
-	/*
-	objectsToNeverWrap.forEach(o => {
-		o[isAlreadyWrapped] = true; //TODO: unsafe for prototypes because we don't check hasOwnProperty(isAlreadyWrapped) in usage
-		if(typeof(o) == 'function') {
-			o[isKnownNativeFunction] = true;
-		}
-	});
-	*/
+	// add special support for "call" and "apply"
+	var functionCall = Function.prototype.call;
+	var functionApply = Function.prototype.apply;
+	functionToString.call = functionCall.call = functionApply.call = functionCall;
+	functionToString.apply = functionCall.apply = functionApply.apply = functionApply;
+	Function.prototype.call = function(obj, ...args) {
+		return wrapInProxy(functionCall.call(this, obj, ...args));
+	}
+	Function.prototype.apply = function(obj, args) {
+		return wrapInProxy(functionCall.call(this, obj, ...args));
+	}
 
 	//
 	// Now it is time to wrap the important objects of this realm
