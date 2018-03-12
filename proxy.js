@@ -12,25 +12,29 @@ void function() {
 	// Import stuff we want to use (before we wrap or replace them, eventually)
 	//
 
-	var console = window.console;
-	/** @type {ObjectConstructor}    */ var Object = window.Object;
-	/** @type {FunctionConstructor}  */ var Function = window.Function;
-	/** @type {SetConstructor}       */ var Set = window.Set;
-	/** @type {ProxyConstructor}     */ var Proxy = window.Proxy;
-	/** @type {WeakMapConstructor}   */ var WeakMap = window.WeakMap;
-	/** @type {SymbolConstructor}    */ var Symbol = window.Symbol;
+	/** @type {Console}              */ const console = window.console;
+	/** @type {ObjectConstructor}    */ const Object = window.Object;
+	/** @type {FunctionConstructor}  */ const Function = window.Function;
+	/** @type {SetConstructor}       */ const Set = window.Set;
+	/** @type {ProxyConstructor}     */ const Proxy = window.Proxy;
+	/** @type {WeakMapConstructor}   */ const WeakMap = window.WeakMap;
+	/** @type {SymbolConstructor}    */ const Symbol = window.Symbol;
 
-	var functionToString = Function.prototype.toString;
-	var objectToString = Object.prototype.toString;
-	var bindFunction = Function.prototype.bind;
+	const functionToString = Function.prototype.toString;
+	const objectToString = Object.prototype.toString;
+	const bindFunction = Function.prototype.bind;
+
+	// (feel free to ignore)
+	const true_if_all_of_the_following_are_true = true;
+	const true_if_one_of_the_following_is_true = false;
 
 	//
 	// Prerequirement: be able to distinguish between native and bound functions
 	// This is done by adding a tag to user-functions returned by "func.bind(obj)"
 	//
 
-	var isNativeFunction_map = new WeakMap();
-	var isNativeFunction = function(f) {
+	const isNativeFunction_map = new WeakMap();
+	const isNativeFunction = function(f) {
 
 		if(typeof(f) != 'function') { /*debugger;*/ return false; }
 
@@ -38,7 +42,7 @@ void function() {
 		if(isKnownNativeFunction !== undefined) return isKnownNativeFunction;
 		
 		var isNative = (
-			/^function[^]*?\([^]*?\)[^]*?\{[^]*?\[native code\][^]*?\}$/m.test(functionToString.call(f))
+			/^function[^()]*?\([^()]*?\)[^{}]*?\{[^{}]*?\[native code\][^]*?\}$/m.test(functionToString.call(f))
 		);
 
 		isNativeFunction_map.set(f, isNative);
@@ -46,31 +50,58 @@ void function() {
 
 	};
 
-	var shouldBeWrapped = function(f) {
-		return !isAlreadyWrapped(f) && isFromThisRealm(f) && (!~objectsToNeverWrapProperties.indexOf(f)) && (typeof(f) == 'function' ? isNativeFunction(f) : (f.constructor ? f.constructor !== Object && isNativeFunction(unbox(f.constructor)) : false));
-	}
-
 	Function.prototype.bind = function() {
 		var boundFunction = bindFunction.apply(this, arguments);
 		isNativeFunction_map.set(boundFunction, false);
 		return boundFunction;
 	};
 
+	//
+	// Prerequirement: be able to distinguish between native and js-constructed objects
+	//
+
+	const isNativeObject = function(f) {
+
+		if(typeof(f) == 'function') {
+			return isNativeFunction(f);
+
+		} else if(typeof(f) != 'object') {
+			return false;
+
+		} else if(f && f.constructor) {
+			return f.constructor !== Object && isNativeFunction(unbox(f.constructor))
+
+		} else {
+			return false;
+		}
+
+	}
+
 	// 
 	// Sepcial logic to try to catch Event objects before they leak unwrapped to event listeners callbacks
 	// 
-	var aEL = EventTarget.prototype.addEventListener;
-	var rEL = EventTarget.prototype.removeEventListener;
-	var aEL_map = new WeakMap();
-	var aEL_box = function(fn) {
+	const aEL = EventTarget.prototype.addEventListener;
+	const rEL = EventTarget.prototype.removeEventListener;
+	const aEL_map = new WeakMap();
+	const aEL_box = function(fn) {
+
+		// get the callback wrapper we use for function `fn` if there is one already
 		var aEL_fn = aEL_map.get(fn);
+
+		// if there is none, create it and save in the cache
 		if(!aEL_fn) {
 			aEL_fn = function(...args) {
-				return fn.apply(wrapInProxy(this,undefined), args.map(arg => wrapInProxy(arg,undefined)))
+				return fn.apply(
+					wrapInProxy(this,'EventTarget<' + getNativeTypeOf(this) + '>'), 
+					args.map(arg => wrapInProxy(arg,getNativeTypeOf(arg)))
+				);
 			}
 			aEL_map.set(fn, aEL_fn);
 		}
+
+		// return the callback wrapper
 		return aEL_fn;
+
 	}
 
 	EventTarget.prototype.addEventListener = function(eventName, callback, options) {
@@ -89,10 +120,10 @@ void function() {
 
 	//
 	// Helper:
-	// Returns trus if the object is from this window
+	// Returns true if the object is from this iframe/window
 	// Returns false if the object is from another iframe/window
 	//
-	var isFromThisRealm = function(obj) {
+	const isFromThisRealm = function(obj) {
 		return (obj instanceof Object);
 	}
 
@@ -101,7 +132,7 @@ void function() {
 	// Returns "Object", "Array", "Window", or another native type value
 	//
 
-	var getNativeTypeOf = function(o) {
+	const getNativeTypeOf = function(o) {
 		try { o = unbox(o); } catch(ex) {}
 		var s = objectToString.call(o);
 		var i = '[object '.length;
@@ -114,7 +145,7 @@ void function() {
 	// The difference with the above function is that if possible the name of the prototype linked to property "key" is used
 	//
 
-	function getNativePrototypeTypeOf(obj, key) {
+	const getNativePrototypeTypeOf = function(obj, key) {
 		var fallbackName = getNativeTypeOf(obj);
 		try {
 			while(!Object.hasOwnProperty.call(obj, key)) {
@@ -132,7 +163,7 @@ void function() {
 	// Returns a string representation of an object key (o[key] or o.key)
 	//
 
-	var getKeyAsStringFrom = function(o) {
+	const getStringRepresentationOfKey = function(o) {
 		try { if(typeof(o) == 'symbol') { return `[${o.toString()}]`; } } catch(ex) { return '[symbol]' }
 		try { if(/^[0-9]+$/.test(o)) { return '[int]'; } } catch (ex) {}
 		try { return `${o}` } catch (ex) {}
@@ -145,7 +176,8 @@ void function() {
 	// Helper:
 	// Returns the property descriptor, eventually from a prototype
 	//
-	var getPropertyDescriptorOf = function(o, k) {
+
+	const getPropertyDescriptorOf = function(o, k) {
 		try {
 			var property = Object.getOwnPropertyDescriptor(o,k);
 			let proto = o;
@@ -161,33 +193,69 @@ void function() {
 	// Storage of the proxy-object to/from source-object links
 	//
 
-	var stp_map = new WeakMap();
-	var pts_map = new WeakMap();
-	var unbox = function(obj) { var proxyInfo = pts_map.get(obj); return proxyInfo && proxyInfo.this ? proxyInfo.this : obj; }
-	var unboxName = function(obj) { var proxyInfo = pts_map.get(obj); return proxyInfo ? proxyInfo.name : undefined; }
-	var isAlreadyWrapped = function(obj) { return obj === null || obj === undefined || (typeof(obj) != 'object' && typeof(obj) != 'function') || pts_map.has(obj); };
+	const stp_map = new WeakMap();
+	const pts_map = new WeakMap();
+	const unbox = function(obj) { var proxyInfo = pts_map.get(obj); return proxyInfo && proxyInfo.this ? proxyInfo.this : obj; }
+	const unboxName = function(obj, fallbackName) { var proxyInfo = pts_map.get(obj); return proxyInfo ? proxyInfo.name : fallbackName; }
 
 	//
-	// This is the algorithm we want to run when an API is being used
+	// Helper:
+	// Returns true if `obj` is a proxy, 
+	// or a prototype object whose properties have been wrapped, 
+	// or a non-object value
 	//
+	
+	const isAlreadyWrapped = function(obj) { 
+		return (true_if_one_of_the_following_is_true
+			|| obj === null 
+			|| obj === undefined 
+			|| (typeof(obj) != 'object' && typeof(obj) != 'function')
+			|| pts_map.has(obj)
+		);
+	};
+
+	//
+	// Helper:
+	// Returns true if `obj` is a desirable proxy/property wrapping candidate
+	//
+
+	const shouldBeWrapped = function(f) {
+		return (true_if_all_of_the_following_are_true
+			&& !isAlreadyWrapped(f) 
+			&& isFromThisRealm(f) 
+			&& !(~objectsToNeverWrapProperties.indexOf(f)) 
+			&& isNativeObject(f)
+		);
+	}
+
+	// ===============================================================
+	// This is the algorithm we want to run when an API is being used
+	// ===============================================================
 
 	// CUSTOMIZE HERE:
 	// this is where we will store our information, we will export it as window.log on the page
 	var log = new Array();
-	function add_log(name) {
-		log.push(name);
+	var add_log = function(name) {
+		log.push(normalizeName(name));
 	}
 	/*
 	var log = new Set();
-	function add_log(name) {
-		log.add(name);
+	var add_log = function(name) {
+		log.add(normalizeName(name));
 	}
 	*/
 
-	// this is how operations on the proxies will work:
-	var proxyCode = {
+	var normalizeName = function(name) {
+		return name.replace(/Prototype\./g,'.');
+	}
 
-		// htmlElement.innerHTML (o = htmlElement, k = "innerHTML")
+	// this is how operations on the proxies will work:
+	const proxyCode = {
+
+		// =========================================================================================
+		// this function is called when the page executes the following code:
+		// returnValue = htmlElement.innerHTML (o = htmlElement, k = "innerHTML")
+		// =========================================================================================
 		get(o,k) {
 
 			try {
@@ -204,11 +272,12 @@ void function() {
 				//operationTime += performance.now();
 
 				// CUSTOMIZE HERE:
-				var property = getPropertyDescriptorOf(o, k);
+				// =========================================================================================
+				let property = getPropertyDescriptorOf(o, k);
 				if(!property.get || isNativeFunction(property.get)) {
-					try { var name = `${getNativePrototypeTypeOf(o,k)}.${getKeyAsStringFrom(k)}`; } catch (ex) {/*debugger;*/};
-					try { if(name) add_log(`${name}`) } catch (ex) {/*debugger;*/};
+					try { add_log(`${getNativePrototypeTypeOf(o,k)}.${getStringRepresentationOfKey(k)}`) } catch (ex) {/*debugger;*/};
 				}
+				// =========================================================================================
 
 			}
 
@@ -217,18 +286,18 @@ void function() {
 
 				// first, we need to know if we can wrap it in a proxy...
 
-				var property = getPropertyDescriptorOf(o, k);
-				var doesPropertyAllowProxyWrapping = !property || (property.set || property.writable) || property.configurable;
+				let property = getPropertyDescriptorOf(o, k);
+				let doesPropertyAllowProxyWrapping = !property || (property.set || property.writable) || property.configurable;
 
 				if(doesPropertyAllowProxyWrapping) {
 
 					// if we can, that is the best option
-					returnValue = wrapInProxy(returnValue, undefined);
+					returnValue = wrapInProxy(returnValue, `${unboxName(box(o), getNativeTypeOf(unbox(o)))}.${getStringRepresentationOfKey(k)}`);
 
 				} else {
 
 					// if not (rare) we will do our best by special-casing the object
-					try { wrapPropertiesOf(returnValue,name); } catch (ex) {/*debugger;*/}
+					try { wrapPropertiesOf(returnValue, `${getNativePrototypeTypeOf(o,k)}.${getStringRepresentationOfKey(k)}`); } catch (ex) {/*debugger;*/}
 				}
 
 			}
@@ -237,7 +306,10 @@ void function() {
 
 		},
 
+		// =========================================================================================
+		// this function is called when the page executes the following code:
 		// htmlElement.innerHTML = responseText; (o = htmlElement, k = "innerHTML", v = responseText)
+		// =========================================================================================
 		set(o,k,v) {
 
 			try {
@@ -254,20 +326,24 @@ void function() {
 				//operationTime += performance.now();
 
 				// CUSTOMIZE HERE:
-				var property = getPropertyDescriptorOf(o, k);
+				// =========================================================================================
+				let property = getPropertyDescriptorOf(o, k);
 				if(!property.set || isNativeFunction(property.set)) {
 					try {
-						var name = `${getNativePrototypeTypeOf(o,k)}.${getKeyAsStringFrom(k)}=${getNativeTypeOf(v)}`;
-						add_log(name)
+						add_log(`${getNativePrototypeTypeOf(o,k)}.${getStringRepresentationOfKey(k)}=${getNativeTypeOf(v)}`)
 					} catch (ex) {/*debugger;*/};
 				}
+				// =========================================================================================
 
 			}
 
 			return true;
 		},
 
-		// htmlElement.focus(); (o = htmlElement.focus, t = htmlElement, a = [])
+		// =========================================================================================
+		// this function is called when the page executes the following code:
+		// returnValue = htmlElement.cloneNode(true); (o = htmlElement.cloneNode, t = htmlElement, a = [true])
+		// =========================================================================================
 		apply(o,t,a) {
 
 			// special rule: if we are calling a native function, none of the arguments can be proxies
@@ -290,24 +366,25 @@ void function() {
 				//operationTime += performance.now();
 
 				// CUSTOMIZE HERE:
+				// =========================================================================================
 				if(isNativeFunction(o)) {
-					var name = `${unboxName(o) || ''}`;
-					if(!name && o.name) {
-						try {name = `${unboxName(o)||(getNativePrototypeTypeOf(t||window,o.name)+'.'+getKeyAsStringFrom(o.name))}`; } catch (ex) {/*debugger;*/};
-					}
-					if(!name) {
-						try { name = `${unboxName(o)||(getNativeTypeOf(t||window)+'.'+'[???]')}`; } catch (ex) {/*debugger;*/};
-					}
-					try { name = `${name}(${a.map(x=>getNativeTypeOf(x)).join(',')})`; } catch (ex) { /*debugger;*/ };
-					try { add_log(`${name}`) } catch (ex) {}
+					let func_name = `${unboxName(o,'')}`;
+					if(!func_name && o.name && unbox((t||window)[o.name]) === o) { try {func_name = `${getNativePrototypeTypeOf(t||window,o.name)}.${getStringRepresentationOfKey(o.name)}`; } catch (ex) {/*debugger;*/}; }
+					if(!func_name) { try { func_name = `${getNativeTypeOf(t||window)}.[???]}`; } catch (ex) {/*debugger;*/}; }
+					try { func_name = `${func_name}(${a.map(x=>getNativeTypeOf(x)).join(',')})`; } catch (ex) { /*debugger;*/ };
+					try { add_log(`${func_name}`) } catch (ex) {}
 				}
+				// =========================================================================================
 			}
 
-			return wrapInProxy(returnValue,name);
+			return wrapInProxy(returnValue,o.name+'()');
 
 		},
 
-		// new CustomEvent("click"); (o = CustomEvent, a = ["click"])
+		// =========================================================================================
+		// this function is called when the page executes the following code:
+		// returnValue = new CustomEvent("click"); (o = CustomEvent, a = ["click"])
+		// =========================================================================================
 		construct(o,a) {
 
 			// special rule: if we are calling a native function, none of the arguments can be proxies
@@ -321,7 +398,7 @@ void function() {
 				//var operationTime = -performance.now()
 
 				// create a new instance of the object, and return it
-				var returnValue = wrapInProxy(Reflect.construct(o,a), undefined);
+				var returnValue = Reflect.construct(o,a);
 
 			} finally {
 
@@ -329,22 +406,20 @@ void function() {
 				//operationTime += performance.now();
 
 				// CUSTOMIZE HERE:
+				// =========================================================================================
 				if(isNativeFunction(o)) {
-					var name = `${unboxName(o) || ''}`;
-					if(!name && o.name) {
-						try {name = `${unboxName(o)||getKeyAsStringFrom(o.name)}`; } catch (ex) {/*debugger;*/};
-					}
-					if(!name) {
-						try { name = `${unboxName(o)||getNativeTypeOf(returnValue)}`; } catch (ex) {/*debugger;*/};
-					}
-					try { name = `new ${name}`; } catch (ex) { /*debugger;*/ };
-					try { name = `${name}(${a.map(x=>getNativeTypeOf(x)).join(',')})`; } catch (ex) { /*debugger;*/ };
-					try { add_log(`${name}`) } catch (ex) {}
+					let func_name = `${unboxName(o,'')}`;
+					if(!func_name && o.name) { try {func_name = `${getStringRepresentationOfKey(o.name)}`; } catch (ex) {/*debugger;*/}; }
+					if(!func_name) { try { func_name = `${getNativeTypeOf(returnValue)}`; } catch (ex) {/*debugger;*/}; }
+					try { func_name = `new ${func_name}`; } catch (ex) { /*debugger;*/ };
+					try { func_name = `${func_name}(${a.map(x=>getNativeTypeOf(x)).join(',')})`; } catch (ex) { /*debugger;*/ };
+					try { add_log(`${func_name}`) } catch (ex) {}
 				}
+				// =========================================================================================
 
 			}
 
-			return returnValue;
+			return wrapInProxy(returnValue, 'new ' + o.name + '()');
 
 		}
 	};
@@ -353,12 +428,15 @@ void function() {
 	// Helper:
 	// Creates a proxy for the given source object and name, if needed (and return it)
 	//
-	function wrapInProxy(obj,name) {
+
+	const wrapInProxy = function(obj,name) {
 
 		// special rule: non-objects do not need a proxy
 		if(obj === null) return obj;
 		if(obj === undefined) return obj;
 		if(!(typeof(obj) == 'function' || typeof(obj) == 'object')) return obj;
+
+		// special rule: some objects should never be wrapped, return them directly
 		if(~objectsToNeverWrapInProxy.indexOf(obj)) return obj;
 
 		// special rule: do not try to track cross-document objects
@@ -378,15 +456,15 @@ void function() {
 			if(pxy) return pxy;
 		}
 
-		// do not wrap non-native objects (TODO: expand detection?)
+		// do not wrap non-native objects
 		if(!shouldBeWrapped(obj)) { /*debugger;*/ return obj; }
 
 		// wrap the object in proxy, and add some metadata
 		try {
-			let objData = { this: obj, name: name };
+
 			let pxy = new Proxy(obj, proxyCode);
 			stp_map.set(obj, pxy);
-			pts_map.set(pxy, objData);
+			pts_map.set(pxy, { this: obj, name: name });
 			isNativeFunction_map.set(pxy, false); // HACK: Edge fix
 
 			try {
@@ -401,6 +479,7 @@ void function() {
 			}
 
 			return pxy;
+
 		} catch (ex) {
 			return obj;
 		}
@@ -411,14 +490,14 @@ void function() {
 	// Helper:
 	// Tries to catch get/set on an object without creating a proxy for it (unsafe special case)
 	//
-	function wrapPropertiesOf(obj, name) {
+
+	const wrapPropertiesOf = function(obj, name) {
 
 		// special rule: don't rewrap a wrapped object
 		if(isAlreadyWrapped(obj)) return;
 
 		// mark the object as wrapped already
-		let objData = { this: obj, name: name };
-		pts_map.set(obj, objData);
+		pts_map.set(obj, { this: obj, name: name });
 
 		// wrap the properties of all prototypes
 		let proto = Object.getPrototypeOf(obj);
@@ -427,6 +506,7 @@ void function() {
 			proto = Object.getPrototypeOf(proto);
 		}
 
+		// special rule: some objects should never be wrapped, return them directly
 		if(~objectsToNeverWrapProperties.indexOf(obj)) return;
 
 		// for all the keys of this object
@@ -473,6 +553,11 @@ void function() {
 
 						// in the case of a getter/setter, we can just duplicate
 						Object.defineProperty(obj, key, {
+
+							// =========================================================================================
+							// this function is called when the page executes the following code:
+							// returnValue = obj.property (this = obj, key = "property")
+							// =========================================================================================
 							get() {
 
 								// special rule: when setting a value in the native world, we need to unwrap the value
@@ -495,15 +580,22 @@ void function() {
 									//operationTime += performance.now();
 
 									// CUSTOMIZE HERE:
+									// =========================================================================================
 									if(isNativeFunction(property.get)) {
-										try { add_log(`${getNativeTypeOf(proto)}.${getKeyAsStringFrom(key)}`) } catch (ex) {/*debugger;*/};
+										try { add_log(`${getNativeTypeOf(proto)}.${getStringRepresentationOfKey(key)}`) } catch (ex) {/*debugger;*/};
 									}
+									// =========================================================================================
 
 								}
 
 								return wrapInProxy(returnValue, name+'.'+key);
 
 							},
+
+							// =========================================================================================
+							// this function is called when the page executes the following code:
+							// obj.property = newValue (this = obj, key = "property", v = newValue)
+							// =========================================================================================
 							set(v) {
 
 								// special rule: when setting a value in the native world, we need to unwrap the value
@@ -527,12 +619,11 @@ void function() {
 									//operationTime += performance.now();
 
 									// CUSTOMIZE HERE:
+									// =========================================================================================
 									if(isNativeFunction(property.set)) {
-										try {
-											var name = `${getNativeTypeOf(proto)}.${getKeyAsStringFrom(key)}=${getNativeTypeOf(v)}`;
-											add_log(name);
-										} catch (ex) {/*debugger;*/};
+										try { add_log(`${getNativeTypeOf(proto)}.${getStringRepresentationOfKey(key)}=${getNativeTypeOf(v)}`); } catch (ex) {/*debugger;*/};
 									}
+									// =========================================================================================
 
 								}
 
@@ -566,13 +657,13 @@ void function() {
 
 						// we cannot redefine the value of a non-configurable read-only property
 						if(property.value && shouldBeWrapped(property.value)) {
-							console.warn("Unable to wrap readonly property at this level: ", name, key);
+							console.warn("Unable to wrap readonly property at this level: ", obj, name, key);
 						}
 
 					} else if(proto === obj) {
 
 						if(key != 'URLUnencoded') { // HACK: Edge hack
-							console.warn("Unable to wrap strange property: ", name, key);
+							console.warn("Unable to wrap strange property: ", obj, name, key);
 							/*debugger;*/
 						}
 
@@ -593,14 +684,14 @@ void function() {
 
 					// in the case of a direct read-only data field, there is nothing we can do
 					if(shouldBeWrapped(property.value)) {
-						console.warn("Unable to wrap readonly property: ", name, key);
+						console.warn("Unable to wrap readonly property: ", obj, name, key);
 					}
 
 				} else {
 
 					// wtf?
 					if(key != 'URLUnencoded') { // HACK: Edge hack
-						console.warn("Unable to wrap strange property: ", name, key);
+						console.warn("Unable to wrap strange property: ", obj, name, key);
 						/*debugger;*/
 					}
 
@@ -608,7 +699,7 @@ void function() {
 
 			} catch (ex) {
 
-				console.warn("Unable to wrap property: ", name, key, ex);
+				console.warn("Unable to wrap property: ", obj, name, key, ex);
 
 			}
 		}
@@ -619,7 +710,7 @@ void function() {
 	// There are a few objects we don't want to wrap for performance reason
 	//
 
-	let objectsToNeverWrapInProxy = [
+	const objectsToNeverWrapInProxy = [
 		Object, Object.prototype, String, String.prototype, Number, Number.prototype, Boolean, Boolean.prototype,
 		RegExp, RegExp.prototype, Reflect, Function, Function.prototype,
 		Error, Error.prototype, DOMError, DOMError.prototype, DOMException, DOMException.prototype,
@@ -630,7 +721,7 @@ void function() {
 		console, console.log, console.__proto__
 		// TODO: add more here
 	]
-	let objectsToNeverWrapProperties = [
+	const objectsToNeverWrapProperties = [
 		Object, Object.prototype, String, String.prototype, Number, Number.prototype, Boolean, Boolean.prototype,
 		RegExp, RegExp.prototype, Reflect, Function, Function.prototype,
 		Error, Error.prototype, DOMError, DOMError.prototype, DOMException, DOMException.prototype,
@@ -644,7 +735,7 @@ void function() {
 	]
 
 	// add all typed arrays and array buffers at once
-	for(var key of Object.getOwnPropertyNames(window)) {
+	for(let key of Object.getOwnPropertyNames(window)) {
 		if(typeof(key) == 'string' && ~key.indexOf('Array')) {
 			objectsToNeverWrapInProxy.push(window[key]);
 			objectsToNeverWrapProperties.push(window[key]);
@@ -656,8 +747,8 @@ void function() {
 	}
 
 	// add special support for "call" and "apply"
-	var functionCall = Function.prototype.call;
-	var functionApply = Function.prototype.apply;
+	const functionCall = Function.prototype.call;
+	const functionApply = Function.prototype.apply;
 	functionToString.call = functionCall.call = functionApply.call = functionCall;
 	functionToString.apply = functionCall.apply = functionApply.apply = functionApply;
 	Function.prototype.call = function(obj, ...args) {
@@ -693,11 +784,16 @@ void function() {
 	//__top = wrapInProxy(location, 'top');
 
 	//
-	// CUSTOMIZE HERE:
+	// Expose our findings in the global scope or in the console
 	//
+
+	// CUSTOMIZE HERE:
+	// =========================================================================================
 
 	window.log = log;
 	log.length = 0;
 	/*log.clear();*/
+
+	// =========================================================================================
 
 }();
