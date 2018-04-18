@@ -274,8 +274,10 @@ void function() {
 				// CUSTOMIZE HERE:
 				// =========================================================================================
 				let property = getPropertyDescriptorOf(o, k);
-				if(!property.get || isNativeFunction(property.get)) {
-					try { add_log(`${getNativePrototypeTypeOf(o,k)}.${getStringRepresentationOfKey(k)}`) } catch (ex) {/*debugger;*/};
+				if(property != null || returnValue !== undefined) {
+					if(!property || !property.get || isNativeFunction(property.get)) {
+						try { add_log(`${getNativePrototypeTypeOf(o,k)}.${getStringRepresentationOfKey(k)}`) } catch (ex) {/*debugger;*/};
+					}
 				}
 				// =========================================================================================
 
@@ -328,10 +330,12 @@ void function() {
 				// CUSTOMIZE HERE:
 				// =========================================================================================
 				let property = getPropertyDescriptorOf(o, k);
-				if(!property.set || isNativeFunction(property.set)) {
-					try {
-						add_log(`${getNativePrototypeTypeOf(o,k)}.${getStringRepresentationOfKey(k)}=${getNativeTypeOf(v)}`)
-					} catch (ex) {/*debugger;*/};
+				if(property != null) {
+					if(!property.set || isNativeFunction(property.set)) {
+						try {
+							add_log(`${getNativePrototypeTypeOf(o,k)}.${getStringRepresentationOfKey(k)}=${getNativeTypeOf(v)}`)
+						} catch (ex) {/*debugger;*/};
+					}
 				}
 				// =========================================================================================
 
